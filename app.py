@@ -1,12 +1,12 @@
 import streamlit as st
 from transformers import pipeline
 
-# Load the conversational pipeline from Hugging Face
-chatbot_pipeline = pipeline('conversational')
+# Load the text generation pipeline from Hugging Face
+generator = pipeline('text-generation', model='gpt2')
 
 # Function to generate a response
 def generate_response(user_input):
-    response = chatbot_pipeline(user_input)
+    response = generator(user_input, max_length=50, num_return_sequences=1)
     return response[0]['generated_text']
 
 # Streamlit App
