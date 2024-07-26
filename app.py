@@ -1,23 +1,35 @@
 import streamlit as st
+import os
 from huggingface_hub import InferenceClient
+
+# Get the API token from environment variable or Streamlit secrets
+API_TOKEN = os.environ.get("HF_API_TOKEN") or st.secrets.get("HF_API_TOKEN")
+
+if not API_TOKEN:
+    st.error("Please set the HF_API_TOKEN in your environment or Streamlit secrets.")
+    st.stop()
 
 # Initialize the InferenceClient
 @st.cache_resource
 def get_inference_client():
     return InferenceClient(
         "microsoft/DialoGPT-medium",
-        token=st.secrets["HF_API_TOKEN"]
+        token=API_TOKEN
     )
 
 # Function to generate response
 def generate_response(client, messages):
     response = ""
-    for message in client.chat_completion(
-        messages=messages,
-        max_tokens=500,
-        stream=True,
-    ):
-        response += message.choices[0].delta.content or ""
+    try:
+        for message in client.chat_completion(
+            messages=messages,
+            max_tokens=500,
+            stream=True,
+        ):
+            response += message.choices[0].delta.content or ""
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+        response = "I'm sorry, I encountered an error. Please try again."
     return response
 
 # Streamlit app
