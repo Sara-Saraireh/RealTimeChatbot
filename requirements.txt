@@ -5,3 +5,4 @@ watsonxlangchain
 PyPDF2
 chromadb
 sentence-transformers
+huggingface-hub
