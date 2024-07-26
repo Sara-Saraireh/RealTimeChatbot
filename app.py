@@ -3,7 +3,7 @@ import os
 from huggingface_hub import InferenceClient
 
 # Get the API token from environment variable or Streamlit secrets
-API_TOKEN = os.environ.get("HF_API_TOKEN") or st.secrets.get("HF_API_TOKEN")
+API_TOKEN = "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"
 
 if not API_TOKEN:
     st.error("Please set the HF_API_TOKEN in your environment or Streamlit secrets.")
