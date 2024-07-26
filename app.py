@@ -44,7 +44,7 @@ if 'messages' not in st.session_state:
 client = get_inference_client()
 
 # User input
-user_input = st.text_input("You:", key="user_input")
+user_input = st.text_input("You:")
 
 if st.button("Send"):
     if user_input:
@@ -56,9 +56,6 @@ if st.button("Send"):
         
         # Add bot response to messages
         st.session_state.messages.append({"role": "assistant", "content": bot_response})
-        
-        # Clear user input
-        st.session_state.user_input = ""
 
 # Display chat history
 for message in st.session_state.messages:
@@ -66,3 +63,7 @@ for message in st.session_state.messages:
         st.write(f"**You:** {message['content']}")
     else:
         st.write(f"**Bot:** {message['content']}")
+
+# Clear chat history button
+if st.button("Clear Chat History"):
+    st.session_state.messages = []
