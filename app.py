@@ -26,16 +26,15 @@ llm = LangChainInterface(
         'temperature': 0.5
     },
     project_id='1e2141f0-2107-4e64-97a2-c58e71976116'
-                
-
 )
 
 # This function loads a PDF of your choosing
 @st.cache_resource
-def load_pdf():
-    # Update PDF name here to whatever you like
-    pdf_name = 'what is generative ai.pdf'
-    loaders = [PyPDFLoader(pdf_name)]
+def load_pdf(pdf_file):
+    # Save uploaded file temporarily
+    with open(pdf_file.name, "wb") as f:
+        f.write(pdf_file.getbuffer())
+    loaders = [PyPDFLoader(pdf_file.name)]
     # Create index - aka vector database - aka chromadb
     index = VectorstoreIndexCreator(
         embedding=HuggingFaceEmbeddings(model_name='all-MiniLM-L12-v2'),
@@ -43,17 +42,6 @@ def load_pdf():
     ).from_loaders(loaders)
     # Return the vector database
     return index
-
-# Load vector database
-index = load_pdf()
-
-# Create a Q&A chain
-chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type='stuff',
-    retriever=index.vectorstore.as_retriever(),
-    input_key= 'question'
-)
 
 # Setup the app title
 st.title('Ask watsonx')
@@ -66,18 +54,35 @@ if 'messages' not in st.session_state:
 for message in st.session_state.messages:
     st.chat_message(message['role']).markdown(message['content'])
 
-# Build a prompt input template to display the prompts
-prompt = st.chat_input('Pass Your Prompt here')
+# File uploader
+uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
-# If the user hits enter then
-if prompt:
-    # Display the prompt
-    st.chat_message('user').markdown(prompt)
-    # Store the user prompt in state
-    st.session_state.messages.append({'role': 'user', 'content': prompt})
-    # Send the prompt to the PDF Q&A CHAIN
-    response = chain.run(prompt)
-    # Show the LLM response
-    st.chat_message('assistant').markdown(response)
-    # Store the LLM response in state
-    st.session_state.messages.append({'role': 'assistant', 'content': response})
+if uploaded_file is not None:
+    # Load vector database
+    index = load_pdf(uploaded_file)
+
+    # Create a Q&A chain
+    chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type='stuff',
+        retriever=index.vectorstore.as_retriever(),
+        input_key='question'
+    )
+
+    # Build a prompt input template to display the prompts
+    prompt = st.chat_input('Pass Your Prompt here')
+
+    # If the user hits enter then
+    if prompt:
+        # Display the prompt
+        st.chat_message('user').markdown(prompt)
+        # Store the user prompt in state
+        st.session_state.messages.append({'role': 'user', 'content': prompt})
+        # Send the prompt to the PDF Q&A CHAIN
+        response = chain.run(prompt)
+        # Show the LLM response
+        st.chat_message('assistant').markdown(response)
+        # Store the LLM response in state
+        st.session_state.messages.append({'role': 'assistant', 'content': response})
+else:
+    st.write("Please upload a PDF file to proceed.")
