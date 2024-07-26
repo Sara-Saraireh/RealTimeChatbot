@@ -1,85 +1,45 @@
-!pip install -qq langchain wget llama-index cohere llama-cpp-python
+import streamlit as st
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
 
-import wget 
+# Load Hugging Face API token from Streamlit secrets
+HF_API_TOKEN = st.secrets["HF_API_TOKEN"]
 
-def bar_custom(current, total, width=80):
-    print("Downloading %d%% [%d / %d] bytes" % (current / total * 100, current, total))
+# Load the DialoGPT model and tokenizer using the API token
+tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium", use_auth_token=HF_API_TOKEN)
+model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-medium", use_auth_token=HF_API_TOKEN)
 
-model_url = "https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF/resolve/main/llama-2-7b-chat.Q2_K.gguf"
-wget.download(model_url, bar=bar_custom)
+# Function to generate a response
+def generate_response(user_input, chat_history_ids=None):
+    # Encode the new user input and add the EOS token
+    new_user_input_ids = tokenizer.encode(user_input + tokenizer.eos_token, return_tensors='pt')
 
-!pip -q install streamlit
+    # Append the new user input tokens to the chat history
+    bot_input_ids = torch.cat([chat_history_ids, new_user_input_ids], dim=-1) if chat_history_ids is not None else new_user_input_ids
 
-%%writefile app.py
-import streamlit as st 
-from llama_index import (
-  SimpleDirectoryReader,
-  VectorStoreIndex,
-  ServiceContext,
-)
-from llama_index.llms import LlamaCPP
-from llama_index.llms.llama_utils import (
-  messages_to_prompt,
-  completion_to_prompt,
-)
-from langchain.schema import(SystemMessage, HumanMessage, AIMessage)
+    # Generate a response while limiting the total chat history to 1000 tokens
+    chat_history_ids = model.generate(bot_input_ids, max_length=1000, pad_token_id=tokenizer.eos_token_id)
 
-def init_page() -> None:
-  st.set_page_config(
-    page_title="Personal Chatbot"
-  )
-  st.header("Persoanl Chatbot")
-  st.sidebar.title("Options")
-
-def select_llm() -> LlamaCPP:
-  return LlamaCPP(
-    model_path="/content/llama-2-7b-chat.Q2_K.gguf",
-    temperature=0.1,
-    max_new_tokens=500,
-    context_window=3900,
-    generate_kwargs={},
-    model_kwargs={"n_gpu_layers":1},
-    messages_to_prompt=messages_to_prompt,
-    completion_to_prompt=completion_to_prompt,
-    verbose=True,
-  )
-
-def init_messages() -> None:
-  clear_button = st.sidebar.button("Clear Conversation", key="clear")
-  if clear_button or "messages" not in st.session_state:
-    st.session_state.messages = [
-      SystemMessage(
-        content="you are a helpful AI assistant. Reply your answer in markdown format."
-      )
-    ]
-
-def get_answer(llm, messages) -> str:
-  response = llm.complete(messages)
-  return response.text
-
-def main() -> None:
-  init_page()
-  llm = select_llm()
-  init_messages()
-
-  if user_input := st.chat_input("Input your question!"):
-    st.session_state.messages.append(HumanMessage(content=user_input))
-    with st.spinner("Bot is typing ..."):
-      answer = get_answer(llm, user_input)
-      print(answer)
-    st.session_state.messages.append(AIMessage(content=answer))
+    # Decode the last output tokens from the bot
+    response = tokenizer.decode(chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
     
+    return response, chat_history_ids
 
-  messages = st.session_state.get("messages", [])
-  for message in messages:
-    if isinstance(message, AIMessage):
-      with st.chat_message("assistant"):
-        st.markdown(message.content)
-    elif isinstance(message, HumanMessage):
-      with st.chat_message("user"):
-        st.markdown(message.content)
+# Streamlit App
+st.title("Real-time Chatbot Agent")
+st.write("Interact with the chatbot below:")
 
-if __name__ == "__main__":
-  main()
- 
-!streamlit run app.py & npx localtunnel --port 8501
+# Initialize chat history
+if 'chat_history_ids' not in st.session_state:
+    st.session_state.chat_history_ids = None
+
+# User input
+user_input = st.text_input("You:", "")
+
+if st.button("Send"):
+    if user_input:
+        response, chat_history_ids = generate_response(user_input, st.session_state.chat_history_ids)
+        st.session_state.chat_history_ids = chat_history_ids
+        
+        st.write(f"You: {user_input}")
+        st.write(f"Bot: {response}")
