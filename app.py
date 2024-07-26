@@ -1,45 +1,80 @@
+# Import langchain dependencies
+from langchain.document_loaders import PyPDFLoader
+from langchain.indexes import VectorstoreIndexCreator
+from langchain.chains import RetrievalQA
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+# Bring in streamlit for UI dev
 import streamlit as st
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
 
-# Load Hugging Face API token from Streamlit secrets
-HF_API_TOKEN = st.secrets["HF_API_TOKEN"]
+# Bring in watsonx interface
+from watsonxlangchain import LangChainInterface
 
-# Load the DialoGPT model and tokenizer using the API token
-tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium", use_auth_token=HF_API_TOKEN)
-model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-medium", use_auth_token=HF_API_TOKEN)
+creds = {
+    'apikey': 'ZNPRw05jup0f2SFOCFkAtfZskeCPL6fESGaYAq1EWRp7',
+    'url': 'https://us-south.ml.cloud.ibm.com'
+}
 
-# Function to generate a response
-def generate_response(user_input, chat_history_ids=None):
-    # Encode the new user input and add the EOS token
-    new_user_input_ids = tokenizer.encode(user_input + tokenizer.eos_token, return_tensors='pt')
+# Create LLM using Langchain
+llm = LangChainInterface(
+    credentials=creds,
+    model='meta-llama/llama-2-70b-chat',
+    params={
+        'decoding_method': 'sample',
+        'max_new_tokens': 200,
+        'temperature': 0.5
+    },
+    project_id='dd58941e-28cc-4abe-9189-0bebc2f2edec'
+)
 
-    # Append the new user input tokens to the chat history
-    bot_input_ids = torch.cat([chat_history_ids, new_user_input_ids], dim=-1) if chat_history_ids is not None else new_user_input_ids
+# This function loads a PDF of your choosing
+@st.cache_resource
+def load_pdf():
+    # Update PDF name here to whatever you like
+    pdf_name = 'what is generative ai.pdf'
+    loaders = [PyPDFLoader(pdf_name)]
+    # Create index - aka vector database - aka chromadb
+    index = VectorstoreIndexCreator(
+        embedding=HuggingFaceEmbeddings(model_name='all-MiniLM-L12-v2'),
+        text_splitter=RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=0)
+    ).from_loaders(loaders)
+    # Return the vector database
+    return index
 
-    # Generate a response while limiting the total chat history to 1000 tokens
-    chat_history_ids = model.generate(bot_input_ids, max_length=1000, pad_token_id=tokenizer.eos_token_id)
+# Load vector database
+index = load_pdf()
 
-    # Decode the last output tokens from the bot
-    response = tokenizer.decode(chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
-    
-    return response, chat_history_ids
+# Create a Q&A chain
+chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type='stuff',
+    retriever=index.vectorstore.as_retriever()
+)
 
-# Streamlit App
-st.title("Real-time Chatbot Agent")
-st.write("Interact with the chatbot below:")
+# Setup the app title
+st.title('Ask watsonx')
 
-# Initialize chat history
-if 'chat_history_ids' not in st.session_state:
-    st.session_state.chat_history_ids = None
+# Setup a session state message variable to hold all the old messages
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
 
-# User input
-user_input = st.text_input("You:", "")
+# Display all the historical messages
+for message in st.session_state.messages:
+    st.chat_message(message['role']).markdown(message['content'])
 
-if st.button("Send"):
-    if user_input:
-        response, chat_history_ids = generate_response(user_input, st.session_state.chat_history_ids)
-        st.session_state.chat_history_ids = chat_history_ids
-        
-        st.write(f"You: {user_input}")
-        st.write(f"Bot: {response}")
+# Build a prompt input template to display the prompts
+prompt = st.chat_input('Pass Your Prompt here')
+
+# If the user hits enter then
+if prompt:
+    # Display the prompt
+    st.chat_message('user').markdown(prompt)
+    # Store the user prompt in state
+    st.session_state.messages.append({'role': 'user', 'content': prompt})
+    # Send the prompt to the PDF Q&A CHAIN
+    response = chain.run(prompt)
+    # Show the LLM response
+    st.chat_message('assistant').markdown(response)
+    # Store the LLM response in state
+    st.session_state.messages.append({'role': 'assistant', 'content': response})
