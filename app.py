@@ -3,7 +3,7 @@ import os
 from huggingface_hub import InferenceClient
 
 # Get the API token from environment variable or Streamlit secrets
-API_TOKEN = "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"
+API_TOKEN = os.environ.get("HF_API_TOKEN") or st.secrets.get("HF_API_TOKEN")
 
 if not API_TOKEN:
     st.error("Please set the HF_API_TOKEN in your environment or Streamlit secrets.")
@@ -19,18 +19,19 @@ def get_inference_client():
 
 # Function to generate response
 def generate_response(client, messages):
-    response = ""
     try:
-        for message in client.chat_completion(
-            messages=messages,
-            max_tokens=500,
-            stream=True,
-        ):
-            response += message.choices[0].delta.content or ""
+        response = client.text_generation(
+            prompt="\n".join([f"{m['role']}: {m['content']}" for m in messages]),
+            max_new_tokens=50,
+            temperature=0.7,
+            top_k=50,
+            top_p=0.95,
+            do_sample=True
+        )
+        return response[0]['generated_text'].split("\n")[-1].strip()
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
-        response = "I'm sorry, I encountered an error. Please try again."
-    return response
+        return "I'm sorry, I encountered an error. Please try again."
 
 # Streamlit app
 st.title("Advanced AI Chatbot")
