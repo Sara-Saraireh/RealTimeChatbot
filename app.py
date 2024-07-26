@@ -1,63 +1,27 @@
 import streamlit as st
-import os
-from huggingface_hub import InferenceClient
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
 
-# Get the API token from environment variable or Streamlit secrets
-API_TOKEN = os.environ.get("HF_API_TOKEN") or st.secrets.get("HF_API_TOKEN")
-
-if not API_TOKEN:
-    st.error("Please set the HF_API_TOKEN in your environment or Streamlit secrets.")
-    st.stop()
-
-# Initialize the InferenceClient
 @st.cache_resource
-def get_inference_client():
-    return InferenceClient(
-        "microsoft/DialoGPT-medium",
-        token=API_TOKEN
-    )
-
-# Function to generate response
-def generate_response(client, messages):
-    try:
-        prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
-        response = client.text_generation(
-            prompt=prompt,
-            max_new_tokens=50,
-            temperature=0.7,
-            top_k=50,
-            top_p=0.95,
-            do_sample=True
-        )
-        
-        # Check if the response is empty or None
-        if not response or not response[0]['generated_text']:
-            return "I'm sorry, I couldn't generate a response. Please try again."
-        
-        # Split the response and get the last non-empty line
-        generated_lines = response[0]['generated_text'].split("\n")
-        valid_lines = [line.strip() for line in generated_lines if line.strip()]
-        
-        if not valid_lines:
-            return "I'm sorry, I couldn't generate a meaningful response. Please try again."
-        
-        return valid_lines[-1]
-    except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
-        return "I'm sorry, I encountered an error. Please try again."
+def load_model():
+    tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium")
+    model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-medium")
+    return tokenizer, model
 
 # Streamlit app
 st.title("Advanced AI Chatbot")
 st.write("Hello! I'm an AI chatbot powered by DialoGPT. Let's chat!")
 
+# Initialize model and tokenizer
+tokenizer, model = load_model()
+
 # Initialize chat history
+if 'chat_history_ids' not in st.session_state:
+    st.session_state.chat_history_ids = None
+
 if 'messages' not in st.session_state:
     st.session_state.messages = []
 
-# Initialize InferenceClient
-client = get_inference_client()
-
-# User input
 # User input
 user_input = st.text_input("You:")
 
@@ -66,21 +30,29 @@ if st.button("Send"):
         # Add user input to messages
         st.session_state.messages.append({"role": "user", "content": user_input})
         
-        # Generate response
-        bot_response = generate_response(client, st.session_state.messages)
+        # Tokenize the new user input
+        new_user_input_ids = tokenizer.encode(user_input + tokenizer.eos_token, return_tensors='pt')
         
-        # Debugging information
-        st.write("Debug: Raw response", bot_response)
+        # Append the new user input tokens to the chat history
+        bot_input_ids = torch.cat([st.session_state.chat_history_ids, new_user_input_ids], dim=-1) if st.session_state.chat_history_ids is not None else new_user_input_ids
+        
+        # Generate a response
+        st.session_state.chat_history_ids = model.generate(
+            bot_input_ids, 
+            max_length=1000, 
+            pad_token_id=tokenizer.eos_token_id,
+            no_repeat_ngram_size=3,
+            do_sample=True,
+            top_k=100,
+            top_p=0.7,
+            temperature=0.8
+        )
+        
+        # Decode the response
+        response = tokenizer.decode(st.session_state.chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
         
         # Add bot response to messages
-        st.session_state.messages.append({"role": "assistant", "content": bot_response})
-
-# Display chat history
-for message in st.session_state.messages:
-    if message["role"] == "user":
-        st.write(f"**You:** {message['content']}")
-    else:
-        st.write(f"**Bot:** {message['content']}")
+        st.session_state.messages.append({"role": "assistant", "content": response})
 
 # Display chat history
 for message in st.session_state.messages:
@@ -91,4 +63,5 @@ for message in st.session_state.messages:
 
 # Clear chat history button
 if st.button("Clear Chat History"):
+    st.session_state.chat_history_ids = None
     st.session_state.messages = []
