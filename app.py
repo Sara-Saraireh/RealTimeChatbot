@@ -12,7 +12,7 @@ import streamlit as st
 from watsonxlangchain import LangChainInterface
 
 creds = {
-    'apikey': 'ZNPRw05jup0f2SFOCFkAtfZskeCPL6fESGaYAq1EWRp7',
+    'apikey': '1Ko0EUaMVmso8T4FEt1vYLhz-KSIdlztNTb2a-ykd7fR',
     'url': 'https://us-south.ml.cloud.ibm.com'
 }
 
@@ -25,7 +25,9 @@ llm = LangChainInterface(
         'max_new_tokens': 200,
         'temperature': 0.5
     },
-    project_id='dd58941e-28cc-4abe-9189-0bebc2f2edec'
+    project_id='1e2141f0-2107-4e64-97a2-c58e71976116'
+                
+
 )
 
 # This function loads a PDF of your choosing
