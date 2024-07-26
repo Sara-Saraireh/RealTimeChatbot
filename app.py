@@ -2,11 +2,18 @@ import streamlit as st
 from transformers import pipeline
 import spacy
 
-# Load NLP model
-nlp = spacy.load('en_core_web_sm')
+# Ensure you have downloaded the necessary spacy model
+try:
+    nlp = spacy.load('en_core_web_sm')
+except OSError:
+    from spacy.cli import download
+    download('en_core_web_sm')
+    nlp = spacy.load('en_core_web_sm')
+
+# Load the conversational pipeline from Hugging Face
 chatbot_pipeline = pipeline('conversational')
 
-# Chatbot function
+# Function to generate a response
 def generate_response(user_input):
     response = chatbot_pipeline(user_input)
     return response[0]['generated_text']
