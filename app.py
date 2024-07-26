@@ -51,7 +51,8 @@ index = load_pdf()
 chain = RetrievalQA.from_chain_type(
     llm=llm,
     chain_type='stuff',
-    retriever=index.vectorstore.as_retriever()
+    retriever=index.vectorstore.as_retriever(),
+    input_key= 'question'
 )
 
 # Setup the app title
